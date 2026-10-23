@@ -1,10 +1,10 @@
+from pathlib import Path
 
-<!DOCTYPE html>
+contenido = r'''<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport"
-        content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PARTY GOOD - Escáner QR</title>
 
   <script src="https://unpkg.com/html5-qrcode"></script>
@@ -61,16 +61,11 @@
     <h1>PARTY GOOD</h1>
     <h2>Escáner de entradas QR</h2>
 
-    <button onclick="abrirCamara()">
-      Abrir cámara y escanear
-    </button>
-
-    <button class="secundario" onclick="cerrarCamara()">
-      Detener cámara
-    </button>
+    <button onclick="abrirCamara()">Abrir cámara y escanear</button>
+    <button class="secundario" onclick="cerrarCamara()">Detener cámara</button>
 
     <div id="lector"></div>
-    <p id="resultado">Esperando escaneo...</p>
+    <p id="resultado">Abre el escáner desde el panel privado de Apps Script para enviar el código a confirmar.</p>
   </div>
 
   <script>
@@ -83,8 +78,7 @@
       const resultado = document.getElementById("resultado");
 
       if (typeof Html5Qrcode === "undefined") {
-        resultado.textContent =
-          "No se pudo cargar el lector QR.";
+        resultado.textContent = "No se pudo cargar el lector QR. Revisa tu conexión a internet.";
         return;
       }
 
@@ -92,9 +86,8 @@
 
       Html5Qrcode.getCameras()
         .then(function(camaras) {
-          if (!camaras.length) {
-            resultado.textContent =
-              "No se encontró ninguna cámara.";
+          if (!camaras || !camaras.length) {
+            resultado.textContent = "No se encontró ninguna cámara.";
             return;
           }
 
@@ -118,58 +111,94 @@
               let codigo = texto.trim();
 
               try {
-                const url = new URL(texto);
-                codigo = url.searchParams.get("id") || texto;
-              } catch (e) {}
+                const url = new URL(texto.trim());
+                codigo = url.searchParams.get("id") || texto.trim();
+              } catch (e) {
+                // Si el QR contiene solo el código, se usa directamente.
+              }
 
-              resultado.textContent =
-                "QR detectado. Código: " + codigo;
-              const enlaceValidacion =
-  "https://script.google.com/macros/s/AKfycbx_vjanAz8VC5-ksIs7EiYa1ZqEtd1G-w4yK6jCnbKjnEA1LqztVECBR9V8WXH07ovr1Q/exec"
-  + "?id=" + encodeURIComponent(codigo);
+              codigo = String(codigo).trim();
 
-const boton = document.createElement("button");
-boton.textContent = "Verificar entrada";
-boton.onclick = function() {
-  window.open(enlaceValidacion, "_blank");
-};
-
-resultado.appendChild(document.createElement("br"));
-resultado.appendChild(boton);
-
-              // Por ahora solo comprobamos la lectura.
-              // La validación con Google Sheets será el siguiente paso.
-              setTimeout(function() {
+              if (!codigo) {
+                resultado.textContent = "El QR no contiene un código válido.";
                 procesando = false;
-              }, 2500);
+                return;
+              }
+
+              resultado.textContent = "QR detectado. Enviando código al panel privado...";
+
+              // El QR solo se lee aquí. La validación y el registro
+              // del ingreso se hacen en Apps Script tras confirmar.
+              if (window.opener && !window.opener.closed) {
+                window.opener.postMessage({
+                  type: "PARTY_GOOD_QR",
+                  codigo: codigo
+                }, "*");
+
+                resultado.textContent =
+                  "Código enviado al panel de PARTY GOOD. Regresa a la pestaña de Apps Script y pulsa «Confirmar ingreso».";
+                cerrarCamaraDespuesDeLectura();
+              } else {
+                resultado.textContent =
+                  "No se encontró el panel de Apps Script. Cierra esta pestaña y abre el escáner usando el botón del panel privado.";
+                procesando = false;
+              }
             },
-            function() {}
+            function() {
+              // Se ignoran los avisos de lectura mientras busca el QR.
+            }
           );
         })
         .then(function() {
-          if (lector) {
-            resultado.textContent =
-              "Cámara activa. Apunta al QR.";
+          if (lector && !procesando) {
+            resultado.textContent = "Cámara activa. Apunta al QR de la entrada.";
           }
         })
         .catch(function(error) {
           lector = null;
+          procesando = false;
           resultado.textContent =
-            "ERROR: " +
-            (error.message || String(error));
+            "ERROR: " + (error && error.message ? error.message : String(error));
+        });
+    }
+
+    function cerrarCamaraDespuesDeLectura() {
+      if (!lector) return;
+
+      const lectorActual = lector;
+      lector = null;
+
+      lectorActual.stop()
+        .then(function() {
+          lectorActual.clear();
+        })
+        .catch(function() {
+          // El código ya fue enviado; no se requiere otra acción.
         });
     }
 
     function cerrarCamara() {
-      if (!lector) return;
-
-      lector.stop().then(function() {
-        lector.clear();
-        lector = null;
+      if (!lector) {
         procesando = false;
-        document.getElementById("resultado").textContent =
-          "Cámara detenida.";
-      });
+        document.getElementById("resultado").textContent = "Cámara detenida.";
+        return;
+      }
+
+      const lectorActual = lector;
+      lector = null;
+
+      lectorActual.stop()
+        .then(function() {
+          lectorActual.clear();
+          procesando = false;
+          document.getElementById("resultado").textContent = "Cámara detenida.";
+        })
+        .catch(function(error) {
+          procesando = false;
+          document.getElementById("resultado").textContent =
+            "No se pudo detener la cámara: " +
+            (error && error.message ? error.message : String(error));
+        });
     }
   </script>
 </body>
