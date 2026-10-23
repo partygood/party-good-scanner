@@ -203,3 +203,7 @@ contenido = r'''<!DOCTYPE html>
   </script>
 </body>
 </html>
+"""
+ruta=Path("/mnt/data/index_PARTY_GOOD_escanner_con_copia.html")
+ruta.write_text(contenido,encoding="utf-8")
+print(f"Archivo creado: {ruta}")
