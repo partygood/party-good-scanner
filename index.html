@@ -124,6 +124,18 @@
 
               resultado.textContent =
                 "QR detectado. Código: " + codigo;
+              const enlaceValidacion =
+  "https://script.google.com/macros/s/AKfycbx_vjanAz8VC5-ksIs7EiYa1ZqEtd1G-w4yK6jCnbKjnEA1LqztVECBR9V8WXH07ovr1Q/exec"
+  + "?id=" + encodeURIComponent(codigo);
+
+const boton = document.createElement("button");
+boton.textContent = "Verificar entrada";
+boton.onclick = function() {
+  window.open(enlaceValidacion, "_blank");
+};
+
+resultado.appendChild(document.createElement("br"));
+resultado.appendChild(boton);
 
               // Por ahora solo comprobamos la lectura.
               // La validación con Google Sheets será el siguiente paso.
