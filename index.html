@@ -1,209 +1,180 @@
-from pathlib import Path
 
-contenido = r'''<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PARTY GOOD - Escáner QR</title>
-
-  <script src="https://unpkg.com/html5-qrcode"></script>
-
-  <style>
-    body {
-      background: #111;
-      color: white;
-      font-family: Arial, sans-serif;
-      text-align: center;
-      margin: 0;
-      padding: 20px;
-    }
-
-    .panel {
-      max-width: 450px;
-      margin: 20px auto;
-      padding: 25px;
-      background: #222;
-      border-radius: 15px;
-    }
-
-    h1 { color: #ff7900; }
-
-    button {
-      width: 100%;
-      padding: 15px;
-      margin: 8px 0;
-      border: none;
-      border-radius: 8px;
-      background: #ff7900;
-      color: white;
-      font-size: 16px;
-      font-weight: bold;
-      cursor: pointer;
-    }
-
-    .secundario { background: #444; }
-
-    #lector {
-      width: 100%;
-      margin-top: 15px;
-    }
-
-    #resultado {
-      margin-top: 15px;
-      overflow-wrap: anywhere;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PARTY GOOD - Escáner QR</title>
+<script src="https://unpkg.com/html5-qrcode"></script>
+<style>
+body{background:#111;color:white;font-family:Arial,sans-serif;text-align:center;margin:0;padding:20px}
+.panel{max-width:450px;margin:20px auto;padding:25px;background:#222;border-radius:15px}
+h1{color:#ff7900}
+button{width:100%;padding:15px;margin:8px 0;border:0;border-radius:8px;background:#ff7900;color:white;font-size:16px;font-weight:bold;cursor:pointer}
+.secundario{background:#444}
+#lector{width:100%;margin-top:15px}
+#resultado{margin-top:15px;overflow-wrap:anywhere;line-height:1.5}
+#codigoLeido{display:none;width:100%;box-sizing:border-box;padding:12px;margin-top:10px;background:#111;color:white;border:1px solid #ff7900;border-radius:8px;font-size:16px;text-align:center}
+.ayuda{color:#ddd;font-size:14px;line-height:1.5}
+</style>
 </head>
-
 <body>
-  <div class="panel">
-    <h1>PARTY GOOD</h1>
-    <h2>Escáner de entradas QR</h2>
+<div class="panel">
+<h1>PARTY GOOD</h1>
+<h2>Escáner de entradas QR</h2>
+<button onclick="abrirCamara()">Abrir cámara y escanear</button>
+<button class="secundario" onclick="cerrarCamara()">Detener cámara</button>
+<div id="lector"></div>
+<p id="resultado">Apunta la cámara al QR de la entrada.</p>
+<input id="codigoLeido" type="text" readonly aria-label="Código leído">
+<button id="copiar" style="display:none" onclick="copiarCodigo()">Copiar código para confirmar</button>
+<p id="ayuda" class="ayuda" style="display:none">Si el código no aparece en el panel, cópialo y pégalo en el campo de entrada de Google Apps Script. Después confirma el ingreso desde el panel privado.</p>
+</div>
+<script>
+let lector=null;
+let procesando=false;
+let ultimoCodigo="";
 
-    <button onclick="abrirCamara()">Abrir cámara y escanear</button>
-    <button class="secundario" onclick="cerrarCamara()">Detener cámara</button>
+function extraerCodigo(texto){
+  const limpio=String(texto||"").trim();
+  try{
+    const url=new URL(limpio);
+    return String(url.searchParams.get("id")||limpio).trim();
+  }catch(e){
+    return limpio;
+  }
+}
 
-    <div id="lector"></div>
-    <p id="resultado">Abre el escáner desde el panel privado de Apps Script para enviar el código a confirmar.</p>
-  </div>
+function abrirCamara(){
+  if(lector)return;
 
-  <script>
-    let lector = null;
-    let procesando = false;
+  const resultado=document.getElementById("resultado");
 
-    function abrirCamara() {
-      if (lector) return;
+  if(typeof Html5Qrcode==="undefined"){
+    resultado.textContent="No se pudo cargar el lector QR. Revisa tu conexión.";
+    return;
+  }
 
-      const resultado = document.getElementById("resultado");
+  resultado.textContent="Buscando cámara...";
 
-      if (typeof Html5Qrcode === "undefined") {
-        resultado.textContent = "No se pudo cargar el lector QR. Revisa tu conexión a internet.";
-        return;
-      }
+  Html5Qrcode.getCameras().then(function(camaras){
+    if(!camaras||!camaras.length){
+      resultado.textContent="No se encontró ninguna cámara.";
+      return;
+    }
 
-      resultado.textContent = "Buscando cámara...";
+    const trasera=camaras.find(c=>/back|rear|environment|trasera/i.test(c.label));
+    lector=new Html5Qrcode("lector");
 
-      Html5Qrcode.getCameras()
-        .then(function(camaras) {
-          if (!camaras || !camaras.length) {
-            resultado.textContent = "No se encontró ninguna cámara.";
-            return;
+    return lector.start(
+      (trasera||camaras[0]).id,
+      {fps:10,qrbox:{width:230,height:230}},
+      function(texto){
+        if(procesando)return;
+        procesando=true;
+
+        const codigo=extraerCodigo(texto);
+
+        if(!codigo){
+          resultado.textContent="El QR no contiene un código válido.";
+          procesando=false;
+          return;
+        }
+
+        ultimoCodigo=codigo;
+
+        const campo=document.getElementById("codigoLeido");
+        campo.value=codigo;
+        campo.style.display="block";
+        document.getElementById("copiar").style.display="block";
+        document.getElementById("ayuda").style.display="block";
+
+        let enviado=false;
+
+        try{
+          if(window.opener&&!window.opener.closed){
+            window.opener.postMessage({
+              type:"PARTY_GOOD_QR",
+              codigo:codigo
+            },"*");
+            enviado=true;
           }
+        }catch(e){
+          enviado=false;
+        }
 
-          const trasera = camaras.find(c =>
-            /back|rear|environment|trasera/i.test(c.label)
-          );
+        if(enviado){
+          resultado.textContent="QR leído. Regresa al panel de PARTY GOOD. Si el código no aparece allí, usa el botón para copiarlo.";
+        }else{
+          resultado.textContent="QR leído, pero no se encontró conexión con el panel. Pulsa «Copiar código para confirmar» y pégalo en Google Apps Script.";
+        }
 
-          const camara = trasera || camaras[0];
-          lector = new Html5Qrcode("lector");
-
-          return lector.start(
-            camara.id,
-            {
-              fps: 10,
-              qrbox: { width: 230, height: 230 }
-            },
-            function(texto) {
-              if (procesando) return;
-              procesando = true;
-
-              let codigo = texto.trim();
-
-              try {
-                const url = new URL(texto.trim());
-                codigo = url.searchParams.get("id") || texto.trim();
-              } catch (e) {
-                // Si el QR contiene solo el código, se usa directamente.
-              }
-
-              codigo = String(codigo).trim();
-
-              if (!codigo) {
-                resultado.textContent = "El QR no contiene un código válido.";
-                procesando = false;
-                return;
-              }
-
-              resultado.textContent = "QR detectado. Enviando código al panel privado...";
-
-              // El QR solo se lee aquí. La validación y el registro
-              // del ingreso se hacen en Apps Script tras confirmar.
-              if (window.opener && !window.opener.closed) {
-                window.opener.postMessage({
-                  type: "PARTY_GOOD_QR",
-                  codigo: codigo
-                }, "*");
-
-                resultado.textContent =
-                  "Código enviado al panel de PARTY GOOD. Regresa a la pestaña de Apps Script y pulsa «Confirmar ingreso».";
-                cerrarCamaraDespuesDeLectura();
-              } else {
-                resultado.textContent =
-                  "No se encontró el panel de Apps Script. Cierra esta pestaña y abre el escáner usando el botón del panel privado.";
-                procesando = false;
-              }
-            },
-            function() {
-              // Se ignoran los avisos de lectura mientras busca el QR.
-            }
-          );
-        })
-        .then(function() {
-          if (lector && !procesando) {
-            resultado.textContent = "Cámara activa. Apunta al QR de la entrada.";
-          }
-        })
-        .catch(function(error) {
-          lector = null;
-          procesando = false;
-          resultado.textContent =
-            "ERROR: " + (error && error.message ? error.message : String(error));
-        });
+        detenerTrasLectura();
+      },
+      function(){}
+    );
+  }).then(function(){
+    if(lector&&!procesando){
+      resultado.textContent="Cámara activa. Apunta al QR de la entrada.";
     }
+  }).catch(function(error){
+    lector=null;
+    procesando=false;
+    resultado.textContent="ERROR: "+(error&&error.message?error.message:String(error));
+  });
+}
 
-    function cerrarCamaraDespuesDeLectura() {
-      if (!lector) return;
+function detenerTrasLectura(){
+  if(!lector)return;
 
-      const lectorActual = lector;
-      lector = null;
+  const actual=lector;
+  lector=null;
 
-      lectorActual.stop()
-        .then(function() {
-          lectorActual.clear();
-        })
-        .catch(function() {
-          // El código ya fue enviado; no se requiere otra acción.
-        });
-    }
+  actual.stop().then(function(){
+    actual.clear();
+  }).catch(function(){});
+}
 
-    function cerrarCamara() {
-      if (!lector) {
-        procesando = false;
-        document.getElementById("resultado").textContent = "Cámara detenida.";
-        return;
-      }
+function cerrarCamara(){
+  if(!lector){
+    procesando=false;
+    document.getElementById("resultado").textContent="Cámara detenida.";
+    return;
+  }
 
-      const lectorActual = lector;
-      lector = null;
+  const actual=lector;
+  lector=null;
 
-      lectorActual.stop()
-        .then(function() {
-          lectorActual.clear();
-          procesando = false;
-          document.getElementById("resultado").textContent = "Cámara detenida.";
-        })
-        .catch(function(error) {
-          procesando = false;
-          document.getElementById("resultado").textContent =
-            "No se pudo detener la cámara: " +
-            (error && error.message ? error.message : String(error));
-        });
-    }
-  </script>
+  actual.stop().then(function(){
+    actual.clear();
+    procesando=false;
+    document.getElementById("resultado").textContent="Cámara detenida.";
+  }).catch(function(error){
+    procesando=false;
+    document.getElementById("resultado").textContent="No se pudo detener la cámara: "+(error&&error.message?error.message:String(error));
+  });
+}
+
+async function copiarCodigo(){
+  if(!ultimoCodigo)return;
+
+  const resultado=document.getElementById("resultado");
+
+  try{
+    await navigator.clipboard.writeText(ultimoCodigo);
+    resultado.textContent="Código copiado. Vuelve a Google Apps Script, pégalo en el campo de entrada y confirma.";
+  }catch(e){
+    const campo=document.getElementById("codigoLeido");
+    campo.focus();
+    campo.select();
+
+    const ok=document.execCommand("copy");
+
+    resultado.textContent=ok
+      ?"Código copiado. Vuelve a Google Apps Script, pégalo en el campo de entrada y confirma."
+      :"Selecciona el código mostrado y cópialo manualmente.";
+  }
+}
+</script>
 </body>
 </html>
-"""
-ruta=Path("/mnt/data/index_PARTY_GOOD_escanner_con_copia.html")
-ruta.write_text(contenido,encoding="utf-8")
-print(f"Archivo creado: {ruta}")
