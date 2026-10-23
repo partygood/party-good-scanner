@@ -1,0 +1,164 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+  <title>PARTY GOOD - Escáner QR</title>
+
+  <script src="https://unpkg.com/html5-qrcode"></script>
+
+  <style>
+    body {
+      background: #111;
+      color: white;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin: 0;
+      padding: 20px;
+    }
+
+    .panel {
+      max-width: 450px;
+      margin: 20px auto;
+      padding: 25px;
+      background: #222;
+      border-radius: 15px;
+    }
+
+    h1 { color: #ff7900; }
+
+    button {
+      width: 100%;
+      padding: 15px;
+      margin: 8px 0;
+      border: none;
+      border-radius: 8px;
+      background: #ff7900;
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .secundario { background: #444; }
+
+    #lector {
+      width: 100%;
+      margin-top: 15px;
+    }
+
+    #resultado {
+      margin-top: 15px;
+      overflow-wrap: anywhere;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="panel">
+    <h1>PARTY GOOD</h1>
+    <h2>Escáner de entradas QR</h2>
+
+    <button onclick="abrirCamara()">
+      Abrir cámara y escanear
+    </button>
+
+    <button class="secundario" onclick="cerrarCamara()">
+      Detener cámara
+    </button>
+
+    <div id="lector"></div>
+    <p id="resultado">Esperando escaneo...</p>
+  </div>
+
+  <script>
+    let lector = null;
+    let procesando = false;
+
+    function abrirCamara() {
+      if (lector) return;
+
+      const resultado = document.getElementById("resultado");
+
+      if (typeof Html5Qrcode === "undefined") {
+        resultado.textContent =
+          "No se pudo cargar el lector QR.";
+        return;
+      }
+
+      resultado.textContent = "Buscando cámara...";
+
+      Html5Qrcode.getCameras()
+        .then(function(camaras) {
+          if (!camaras.length) {
+            resultado.textContent =
+              "No se encontró ninguna cámara.";
+            return;
+          }
+
+          const trasera = camaras.find(c =>
+            /back|rear|environment|trasera/i.test(c.label)
+          );
+
+          const camara = trasera || camaras[0];
+          lector = new Html5Qrcode("lector");
+
+          return lector.start(
+            camara.id,
+            {
+              fps: 10,
+              qrbox: { width: 230, height: 230 }
+            },
+            function(texto) {
+              if (procesando) return;
+              procesando = true;
+
+              let codigo = texto.trim();
+
+              try {
+                const url = new URL(texto);
+                codigo = url.searchParams.get("id") || texto;
+              } catch (e) {}
+
+              resultado.textContent =
+                "QR detectado. Código: " + codigo;
+
+              // Por ahora solo comprobamos la lectura.
+              // La validación con Google Sheets será el siguiente paso.
+              setTimeout(function() {
+                procesando = false;
+              }, 2500);
+            },
+            function() {}
+          );
+        })
+        .then(function() {
+          if (lector) {
+            resultado.textContent =
+              "Cámara activa. Apunta al QR.";
+          }
+        })
+        .catch(function(error) {
+          lector = null;
+          resultado.textContent =
+            "ERROR: " +
+            (error.message || String(error));
+        });
+    }
+
+    function cerrarCamara() {
+      if (!lector) return;
+
+      lector.stop().then(function() {
+        lector.clear();
+        lector = null;
+        procesando = false;
+        document.getElementById("resultado").textContent =
+          "Cámara detenida.";
+      });
+    }
+  </script>
+</body>
+</html>
